@@ -1,4 +1,3 @@
-
 // --- 配置部分 ---
 const conceptDefinitions = {
     "姓名": { color: "#FF9999", displayLabel: "姓名" },
@@ -406,20 +405,27 @@ function showNodeDetails(nodeId) {
     );
 
     const detailsContent = document.getElementById('details-content');
+    // 只展示名称与经过过滤的属性（不显示 id 与 name）
     let html = `
         <div class="detail-row">
             <div class="detail-label">节点名称</div>
             <div class="detail-value">${escapeHtml(node.label)}</div>
         </div>
-        <div class="detail-row">
-            <div class="detail-label">节点ID</div>
-            <div class="detail-value">${escapeHtml(node.id)}</div>
-        </div>
-        <div class="detail-row">
-            <div class="detail-label">节点类型</div>
-            <div class="detail-value">${getNodeTypeFromTitle(node.title)}</div>
-        </div>
     `;
+
+    // 展示属性（过滤掉 name 和 id）
+    const props = node.properties || {};
+    const propKeys = Object.keys(props).filter(k => k !== 'name' && k !== 'id');
+    if (propKeys.length > 0) {
+        html += `
+            <div class="detail-row">
+                <div class="detail-label">属性</div>
+                <div class="detail-value">
+                    ${propKeys.map(k => `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(props[k]))}</div>`).join('')}
+                </div>
+            </div>
+        `;
+    }
 
     if (relatedEdges.length > 0) {
         html += `
@@ -478,23 +484,11 @@ function processNode(nodeData, nodesMap, allIds) {
     // 优先使用name属性，其次使用value属性
     let nodeLabelValue = nodeData.properties.name || nodeData.properties.value || nodeData.elementId;
 
-    // 构建tooltip，过滤掉 id 和 name 属性
-    const filteredProps = {};
-    Object.entries(nodeData.properties || {}).forEach(([key, value]) => {
-        if (key !== 'id' && key !== 'name') {
-            filteredProps[key] = value;
-        }
-    });
-    
-    const propsStr = Object.keys(filteredProps).length > 0 
-        ? JSON.stringify(filteredProps, null, 2) 
-        : 'N/A';
-
     nodesMap.set(nodeData.elementId, {
         id: nodeData.elementId,
         label: nodeLabelValue,
         color: config.color,
-        title: `值: ${nodeData.properties.value || nodeData.properties.name || 'N/A'}\n属性: ${propsStr}`,
+        title: `ID: ${nodeData.elementId}\n类型: ${config.displayLabel}\n值: ${nodeData.properties.value || nodeData.properties.name || 'N/A'}\n属性: ${JSON.stringify(nodeData.properties, null, 2) || 'N/A'}`,
         properties: nodeData.properties || {}
     });
     allIds.push(nodeData.elementId);
@@ -539,7 +533,7 @@ window.addEventListener('DOMContentLoaded', function() {
                         to: nodeM.elementId,
                         label: relConfig.displayLabel,
                         arrows: 'to',
-                        title: `${relConfig.displayLabel}`
+                        title: `关系: ${relConfig.displayLabel}\nID: ${rel.elementId}\n属性: ${JSON.stringify(rel.properties, null, 2) || 'N/A'}`
                     });
                 } catch (error) {
                     console.error('处理数据项时出错:', error, item);
