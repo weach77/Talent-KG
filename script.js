@@ -56,7 +56,7 @@ function createLoadingIndicator() {
         font-size: 18px;
         color: white;
     `;
-    
+
     const style = document.createElement('style');
     style.textContent = `
         .loader-content {
@@ -226,7 +226,6 @@ function createStatisticsPanel() {
     panel.classList.add('show');
 }
 
-// 【优化】改进统计面板更新逻辑，使用缓存
 function updateStatisticsPanel() {
     const totalNodes = originalNodesMap.size;
     const totalEdges = originalEdgesArray.length;
@@ -238,11 +237,9 @@ function updateStatisticsPanel() {
     document.getElementById('current-nodes').textContent = currentNodes;
     document.getElementById('current-edges').textContent = currentEdges;
 
-    // 【优化】只在数据变化时重新计算类型统计
     updateNodeTypeStats();
 }
 
-// 【优化】单独提取节点类型统计逻辑
 function updateNodeTypeStats() {
     const typeStats = {};
     originalNodesMap.forEach((node) => {
@@ -390,13 +387,13 @@ function createNodeDetailsPanel() {
     document.body.appendChild(panel);
 }
 
-// 【优化】提取获取节点类型的辅助方法
+// --- 获取节点类型 ---
 function getNodeTypeFromTitle(title) {
     const match = title.match(/类型: ([^\n]+)/);
     return match ? match[1] : '未知';
 }
 
-// 【修改】更新节点详情显示逻辑，隐藏特定类型节点的属性
+// --- 显示节点详情 ---
 function showNodeDetails(nodeId) {
     const node = originalNodesMap.get(nodeId);
     if (!node) return;
@@ -406,7 +403,6 @@ function showNodeDetails(nodeId) {
     );
 
     const detailsContent = document.getElementById('details-content');
-    // 只展示名称与经过过滤的属性（不显示 id 与 name）
     let html = `
         <div class="detail-row">
             <div class="detail-label">节点名称</div>
@@ -414,13 +410,9 @@ function showNodeDetails(nodeId) {
         </div>
     `;
 
-    // 获取节点类型以决定是否显示属性
     const nodeType = getNodeTypeFromTitle(node.title);
+    const typesToHideProps = ['单位', '地区', '研究领域'];
 
-    // 定义需要隐藏属性的节点类型
-    const typesToHideProps = ['单位', '地区', '研究领域']; // 可根据需要添加更多类型
-
-    // 仅当节点类型不在隐藏列表中时，才展示属性
     if (!typesToHideProps.includes(nodeType)) {
         const props = node.properties || {};
         const propKeys = Object.keys(props).filter(k => k !== 'name' && k !== 'id');
@@ -435,7 +427,6 @@ function showNodeDetails(nodeId) {
             `;
         }
     }
-    // 如果节点类型在隐藏列表中，则不添加属性部分
 
     if (relatedEdges.length > 0) {
         html += `
@@ -452,18 +443,13 @@ function showNodeDetails(nodeId) {
                 </div>
             `;
         });
-        html += `
-                </div>
-            </div>
-        `;
+        html += `</div></div>`;
     }
 
     detailsContent.innerHTML = html;
-
     const panel = document.getElementById('node-details-panel');
     panel.classList.add('show');
 }
-
 
 function hideNodeDetails() {
     const panel = document.getElementById('node-details-panel');
@@ -483,16 +469,13 @@ function escapeHtml(text) {
     return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
-// 【优化】提取节点处理逻辑
+// --- 节点处理逻辑 ---
 function processNode(nodeData, nodesMap, allIds) {
-    if (nodesMap.has(nodeData.elementId)) {
-        return;
-    }
+    if (nodesMap.has(nodeData.elementId)) return;
 
     const nodeLabel = nodeData.labels[0];
     const config = conceptDefinitions[nodeLabel] || { color: "#CCCCCC", displayLabel: nodeLabel };
-    
-    // 优先使用name属性，其次使用value属性
+
     let nodeLabelValue = nodeData.properties.name || nodeData.properties.value || nodeData.elementId;
 
     nodesMap.set(nodeData.elementId, {
@@ -512,32 +495,21 @@ window.addEventListener('DOMContentLoaded', function() {
 
     fetch('data.json')
         .then(response => {
-            if (!response.ok) {
-                throw new Error(`网络请求失败: ${response.statusText}`);
-            }
+            if (!response.ok) throw new Error(`网络请求失败: ${response.statusText}`);
             return response.json();
         })
         .then(neo4jData => {
-            if (!Array.isArray(neo4jData) || neo4jData.length === 0) {
+            if (!Array.isArray(neo4jData) || neo4jData.length === 0)
                 throw new Error('数据格式无效或数据为空');
-            }
 
-            // 【优化】批量处理数据
             neo4jData.forEach(item => {
                 try {
                     const { n: nodeN, r: rel, m: nodeM } = item;
-                    
-                    // 验证必要的数据
-                    if (!nodeN || !nodeM || !rel) {
-                        console.warn('数据项缺少必要字段:', item);
-                        return;
-                    }
+                    if (!nodeN || !nodeM || !rel) return;
 
-                    // 处理两个节点
                     processNode(nodeN, originalNodesMap, allNodeIds);
                     processNode(nodeM, originalNodesMap, allNodeIds);
 
-                    // 添加边
                     const relConfig = relationDefinitions[rel.type] || { displayLabel: rel.type };
                     originalEdgesArray.push({
                         from: nodeN.elementId,
@@ -558,309 +530,57 @@ window.addEventListener('DOMContentLoaded', function() {
             console.error('加载或处理数据时出错:', error);
             showLoadingIndicator(false);
             const container = document.getElementById('mynetwork');
-            if (container) {
-                container.innerHTML = `<p style="color: red; text-align: center; padding: 20px; font-family: Arial;">加载数据失败: ${escapeHtml(error.message)}</p>`;
-            }
+            if (container) container.innerHTML = `<p style="color:red; text-align:center;">数据加载失败: ${escapeHtml(error.message)}</p>`;
         });
 });
 
+// --- 初始化图谱 ---
 function initializeGraph() {
-    try {
-        currentNodesDataset = new vis.DataSet(Array.from(originalNodesMap.values()));
-        currentEdgesDataset = new vis.DataSet(originalEdgesArray);
+    const container = document.getElementById('mynetwork');
+    if (!container) return console.error('未找到图谱容器');
 
-        const container = document.getElementById('mynetwork');
-        if (!container) {
-            throw new Error('未找到图表容器元素');
-        }
+    const nodesDataset = new vis.DataSet(Array.from(originalNodesMap.values()));
+    const edgesDataset = new vis.DataSet(originalEdgesArray);
 
-        const data = {
-            nodes: currentNodesDataset,
-            edges: currentEdgesDataset
-        };
+    currentNodesDataset = nodesDataset.get();
+    currentEdgesDataset = edgesDataset.get();
 
-        const options = getVisOptions();
-        currentNetworkInstance = new vis.Network(container, data, options);
-
-        // 【优化】统一事件监听器
-        setupNetworkEventListeners();
-
-        updateStatisticsPanel();
-    } catch (error) {
-        console.error('初始化图表时出错:', error);
-        showLoadingIndicator(false);
-    }
-}
-
-// 【优化】提取网络事件监听器设置
-function setupNetworkEventListeners() {
-    if (!currentNetworkInstance) return;
-
-    currentNetworkInstance.on("selectNode", function(params) {
-        const nodeId = params.nodes[0];
-        if (nodeId) {
-            showNodeDetails(nodeId);
-        }
-    });
-
-    currentNetworkInstance.on("deselectNode", function() {
-        hideNodeDetails();
-    });
-
-    currentNetworkInstance.on("stabilizationIterationsDone", function() {
-        currentNetworkInstance.setOptions({ physics: { enabled: false } });
-        updateStatisticsPanel();
-        showLoadingIndicator(false);
-    });
-}
-
-function getVisOptions() {
-    return {
+    const data = { nodes: nodesDataset, edges: edgesDataset };
+    const options = {
+        autoResize: true,
+        height: '100%',
+        width: '100%',
         nodes: {
             shape: 'dot',
-            size: 25,
-            font: {
-                size: 14,
-                face: 'verdana'
-            },
-            borderWidth: 2,
-            chosen: {
-                node: function(values) {
-                    values.color = 'rgba(255, 165, 0, 1)';
-                }
-            }
+            size: 16,
+            font: { size: 14, color: '#000' },
+            borderWidth: 2
         },
         edges: {
             width: 2,
-            font: {
-                size: 12,
-                align: 'middle',
-                color: 'black'
-            },
-            color: {
-                color: 'lightgray',
-                highlight: 'blue',
-                hover: 'blue'
-            },
-            smooth: {
-                type: 'dynamic'
-            },
-            chosen: {
-                edge: function(values) {
-                    values.color = 'blue';
-                    values.width = 3;
-                }
-            }
+            color: { inherit: 'from' },
+            smooth: { type: 'continuous' }
         },
         physics: {
-            enabled: true,
-            solver: 'forceAtlas2Based',
-            forceAtlas2Based: {
-                gravitationalConstant: -100,
-                springLength: 250,
-                centralGravity: 0.005,
-                damping: 0.4,
-                avoidOverlap: 1
-            },
-            stabilization: {
-                enabled: true,
-                iterations: 1500,
-                updateInterval: 25,
-                onlyDynamicEdges: false,
-                fit: true
-            }
+            stabilization: true,
+            barnesHut: { gravitationalConstant: -3000, springLength: 150, springConstant: 0.04 }
         },
         interaction: {
-            tooltipDelay: 200,
-            hideEdgesOnDrag: false,
-            selectConnectedEdges: true,
-            dragNodes: true,
-            dragView: true,
-            zoomView: true
-        },
-        layout: {
-            improvedLayout: true
+            hover: false, // 取消鼠标悬停 tooltip
+            tooltipDelay: 200
         }
     };
+
+    currentNetworkInstance = new vis.Network(container, data, options);
+
+    currentNetworkInstance.on('selectNode', function(params) {
+        if (params.nodes.length > 0) showNodeDetails(params.nodes[0]);
+    });
+
+    currentNetworkInstance.on('deselectNode', function() {
+        hideNodeDetails();
+    });
+
+    showLoadingIndicator(false);
+    updateStatisticsPanel();
 }
-
-// --- 按比例展示函数 ---
-function showPercentage(percent) {
-    if (!currentNetworkInstance || allNodeIds.length === 0) {
-        alert('图表未初始化或没有数据');
-        return;
-    }
-
-    const validPercent = Math.max(1, Math.min(100, percent));
-    showLoadingIndicator(true);
-
-    try {
-        const numNodesToShow = Math.max(1, Math.floor((validPercent / 100) * allNodeIds.length));
-        const shuffledIds = [...allNodeIds].sort(() => 0.5 - Math.random());
-        const selectedNodeIds = new Set(shuffledIds.slice(0, numNodesToShow));
-
-        const relevantEdges = originalEdgesArray.filter(edge =>
-            selectedNodeIds.has(edge.from) && selectedNodeIds.has(edge.to)
-        );
-
-        const relevantNodes = Array.from(originalNodesMap.values()).filter(node =>
-            selectedNodeIds.has(node.id)
-        );
-
-        if (relevantNodes.length === 0) {
-            throw new Error('没有找到符合条件的节点');
-        }
-
-        currentNodesDataset = new vis.DataSet(relevantNodes);
-        currentEdgesDataset = new vis.DataSet(relevantEdges);
-
-        currentNetworkInstance.setData({
-            nodes: currentNodesDataset,
-            edges: currentEdgesDataset
-        });
-
-        setTimeout(() => {
-            if (currentNetworkInstance) {
-                currentNetworkInstance.fit();
-                currentNetworkInstance.setOptions({ physics: getVisOptions().physics });
-                updateStatisticsPanel();
-            }
-            showLoadingIndicator(false);
-        }, 100);
-    } catch (error) {
-        console.error('显示百分比数据时出错:', error);
-        showLoadingIndicator(false);
-        alert('操作失败: ' + error.message);
-    }
-}
-
-// --- 分类展示函数 ---
-function showByLabel(displayLabel) {
-    if (!currentNetworkInstance) {
-        alert('图表未初始化');
-        return;
-    }
-
-    showLoadingIndicator(true);
-
-    try {
-        const selectedNodeIds = new Set();
-        const targetType = `类型: ${displayLabel}`;
-
-        originalNodesMap.forEach((node, id) => {
-            if (node.title.includes(targetType)) {
-                selectedNodeIds.add(id);
-            }
-        });
-
-        if (selectedNodeIds.size === 0) {
-            throw new Error(`没有找到类型为 "${displayLabel}" 的节点`);
-        }
-
-        const relevantEdges = originalEdgesArray.filter(edge =>
-            selectedNodeIds.has(edge.from) && selectedNodeIds.has(edge.to)
-        );
-
-        const relevantNodes = Array.from(originalNodesMap.values()).filter(node =>
-            selectedNodeIds.has(node.id)
-        );
-
-        currentNodesDataset = new vis.DataSet(relevantNodes);
-        currentEdgesDataset = new vis.DataSet(relevantEdges);
-
-        currentNetworkInstance.setData({
-            nodes: currentNodesDataset,
-            edges: currentEdgesDataset
-        });
-
-        setTimeout(() => {
-            if (currentNetworkInstance) {
-                currentNetworkInstance.fit();
-                currentNetworkInstance.setOptions({ physics: getVisOptions().physics });
-                updateStatisticsPanel();
-            }
-            showLoadingIndicator(false);
-        }, 100);
-    } catch (error) {
-        console.error('显示分类数据时出错:', error);
-        showLoadingIndicator(false);
-        alert('操作失败: ' + error.message);
-    }
-}
-
-// --- 控制界面函数 ---
-function toggleControls() {
-    const controlsDiv = document.querySelector('.controls');
-    if (!controlsDiv) return;
-
-    if (controlsVisible) {
-        controlsDiv.style.display = 'none';
-        createRestoreButton();
-    } else {
-        controlsDiv.style.display = 'block';
-        removeRestoreButton();
-    }
-    controlsVisible = !controlsVisible;
-}
-
-function createRestoreButton() {
-    removeRestoreButton(); // 确保没有重复
-
-    const restoreButton = document.createElement('button');
-    restoreButton.id = 'restore-controls-btn';
-    restoreButton.textContent = '恢复控制';
-    restoreButton.style.cssText = `
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        z-index: 101;
-        padding: 8px 15px;
-        font-size: 12px;
-        background: #0066cc;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-        transition: background 0.2s;
-    `;
-    restoreButton.onmouseover = function() {
-        this.style.background = '#0052a3';
-    };
-    restoreButton.onmouseout = function() {
-        this.style.background = '#0066cc';
-    };
-    restoreButton.onclick = toggleControls;
-
-    document.body.appendChild(restoreButton);
-}
-
-function removeRestoreButton() {
-    const existingButton = document.getElementById('restore-controls-btn');
-    if (existingButton) {
-        existingButton.remove();
-    }
-}
-
-// --- 工具函数 ---
-function fitToScreen() {
-    if (currentNetworkInstance) {
-        currentNetworkInstance.fit();
-    }
-}
-
-// 【优化】添加清理函数，便于内存管理
-function cleanup() {
-    if (currentNetworkInstance) {
-        currentNetworkInstance.destroy();
-        currentNetworkInstance = null;
-    }
-    originalNodesMap.clear();
-    originalEdgesArray = [];
-    allNodeIds = [];
-    currentNodesDataset = null;
-    currentEdgesDataset = null;
-}
-
-// 页面卸载时清理资源
-window.addEventListener('beforeunload', cleanup);
