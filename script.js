@@ -23,6 +23,7 @@ let currentNetworkInstance = null;
 let currentNodesDataset = null;
 let currentEdgesDataset = null;
 let controlsVisible = true;
+let nodeTypeStatsCache = null; // 【优化】缓存节点类型统计
 
 // --- 初始化UI元素 ---
 function initializeUIElements() {
@@ -225,6 +226,7 @@ function createStatisticsPanel() {
     panel.classList.add('show');
 }
 
+// 【优化】改进统计面板更新逻辑，使用缓存
 function updateStatisticsPanel() {
     const totalNodes = originalNodesMap.size;
     const totalEdges = originalEdgesArray.length;
@@ -236,13 +238,15 @@ function updateStatisticsPanel() {
     document.getElementById('current-nodes').textContent = currentNodes;
     document.getElementById('current-edges').textContent = currentEdges;
 
+    // 【优化】只在数据变化时重新计算类型统计
     updateNodeTypeStats();
 }
 
+// 【优化】单独提取节点类型统计逻辑
 function updateNodeTypeStats() {
     const typeStats = {};
     originalNodesMap.forEach((node) => {
-        const match = node.title?.match(/类型: ([^\n]+)/);
+        const match = node.title.match(/类型: ([^\n]+)/);
         const type = match ? match[1] : '未知';
         typeStats[type] = (typeStats[type] || 0) + 1;
     });
@@ -386,11 +390,13 @@ function createNodeDetailsPanel() {
     document.body.appendChild(panel);
 }
 
+// 【优化】提取获取节点类型的辅助方法
 function getNodeTypeFromTitle(title) {
-    const match = title?.match(/类型: ([^\n]+)/);
+    const match = title.match(/类型: ([^\n]+)/);
     return match ? match[1] : '未知';
 }
 
+// 【修改】更新节点详情显示逻辑，隐藏特定类型节点的属性
 function showNodeDetails(nodeId) {
     const node = originalNodesMap.get(nodeId);
     if (!node) return;
@@ -400,6 +406,7 @@ function showNodeDetails(nodeId) {
     );
 
     const detailsContent = document.getElementById('details-content');
+    // 只展示名称与经过过滤的属性（不显示 id 与 name）
     let html = `
         <div class="detail-row">
             <div class="detail-label">节点名称</div>
@@ -407,9 +414,13 @@ function showNodeDetails(nodeId) {
         </div>
     `;
 
+    // 获取节点类型以决定是否显示属性
     const nodeType = getNodeTypeFromTitle(node.title);
-    const typesToHideProps = ['单位', '地区', '研究领域'];
 
+    // 定义需要隐藏属性的节点类型
+    const typesToHideProps = ['单位', '地区', '研究领域']; // 可根据需要添加更多类型
+
+    // 仅当节点类型不在隐藏列表中时，才展示属性
     if (!typesToHideProps.includes(nodeType)) {
         const props = node.properties || {};
         const propKeys = Object.keys(props).filter(k => k !== 'name' && k !== 'id');
@@ -424,6 +435,7 @@ function showNodeDetails(nodeId) {
             `;
         }
     }
+    // 如果节点类型在隐藏列表中，则不添加属性部分
 
     if (relatedEdges.length > 0) {
         html += `
@@ -440,36 +452,54 @@ function showNodeDetails(nodeId) {
                 </div>
             `;
         });
-        html += `</div></div>`;
+        html += `
+                </div>
+            </div>
+        `;
     }
 
     detailsContent.innerHTML = html;
-    document.getElementById('node-details-panel').classList.add('show');
+
+    const panel = document.getElementById('node-details-panel');
+    panel.classList.add('show');
 }
 
+
 function hideNodeDetails() {
-    document.getElementById('node-details-panel')?.classList.remove('show');
+    const panel = document.getElementById('node-details-panel');
+    if (panel) {
+        panel.classList.remove('show');
+    }
 }
 
 function escapeHtml(text) {
-    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
     return String(text).replace(/[&<>"']/g, m => map[m]);
 }
 
+// 【优化】提取节点处理逻辑
 function processNode(nodeData, nodesMap, allIds) {
-    if (nodesMap.has(nodeData.elementId)) return;
+    if (nodesMap.has(nodeData.elementId)) {
+        return;
+    }
 
     const nodeLabel = nodeData.labels[0];
     const config = conceptDefinitions[nodeLabel] || { color: "#CCCCCC", displayLabel: nodeLabel };
-
+    
+    // 优先使用name属性，其次使用value属性
     let nodeLabelValue = nodeData.properties.name || nodeData.properties.value || nodeData.elementId;
 
-    // 🔴 关键修改：不再设置 title → 彻底关闭悬停提示
     nodesMap.set(nodeData.elementId, {
         id: nodeData.elementId,
         label: nodeLabelValue,
         color: config.color,
-        // 🚫 已移除 title 字段
+        title: `ID: ${nodeData.elementId}\n类型: ${config.displayLabel}\n值: ${nodeData.properties.value || nodeData.properties.name || 'N/A'}\n属性: ${JSON.stringify(nodeData.properties, null, 2) || 'N/A'}`,
         properties: nodeData.properties || {}
     });
     allIds.push(nodeData.elementId);
@@ -482,7 +512,9 @@ window.addEventListener('DOMContentLoaded', function() {
 
     fetch('data.json')
         .then(response => {
-            if (!response.ok) throw new Error(`网络请求失败: ${response.statusText}`);
+            if (!response.ok) {
+                throw new Error(`网络请求失败: ${response.statusText}`);
+            }
             return response.json();
         })
         .then(neo4jData => {
@@ -490,25 +522,29 @@ window.addEventListener('DOMContentLoaded', function() {
                 throw new Error('数据格式无效或数据为空');
             }
 
+            // 【优化】批量处理数据
             neo4jData.forEach(item => {
                 try {
                     const { n: nodeN, r: rel, m: nodeM } = item;
+                    
+                    // 验证必要的数据
                     if (!nodeN || !nodeM || !rel) {
                         console.warn('数据项缺少必要字段:', item);
                         return;
                     }
 
+                    // 处理两个节点
                     processNode(nodeN, originalNodesMap, allNodeIds);
                     processNode(nodeM, originalNodesMap, allNodeIds);
 
-                    // 🔴 边也不再设置 title
+                    // 添加边
                     const relConfig = relationDefinitions[rel.type] || { displayLabel: rel.type };
                     originalEdgesArray.push({
                         from: nodeN.elementId,
                         to: nodeM.elementId,
                         label: relConfig.displayLabel,
-                        arrows: 'to'
-                        // 🚫 无 title
+                        arrows: 'to',
+                        title: `关系: ${relConfig.displayLabel}\nID: ${rel.elementId}\n属性: ${JSON.stringify(rel.properties, null, 2) || 'N/A'}`
                     });
                 } catch (error) {
                     console.error('处理数据项时出错:', error, item);
@@ -534,13 +570,21 @@ function initializeGraph() {
         currentEdgesDataset = new vis.DataSet(originalEdgesArray);
 
         const container = document.getElementById('mynetwork');
-        if (!container) throw new Error('未找到图表容器元素');
+        if (!container) {
+            throw new Error('未找到图表容器元素');
+        }
 
-        const data = { nodes: currentNodesDataset, edges: currentEdgesDataset };
+        const data = {
+            nodes: currentNodesDataset,
+            edges: currentEdgesDataset
+        };
+
         const options = getVisOptions();
         currentNetworkInstance = new vis.Network(container, data, options);
 
+        // 【优化】统一事件监听器
         setupNetworkEventListeners();
+
         updateStatisticsPanel();
     } catch (error) {
         console.error('初始化图表时出错:', error);
@@ -548,15 +592,20 @@ function initializeGraph() {
     }
 }
 
+// 【优化】提取网络事件监听器设置
 function setupNetworkEventListeners() {
     if (!currentNetworkInstance) return;
 
     currentNetworkInstance.on("selectNode", function(params) {
         const nodeId = params.nodes[0];
-        if (nodeId) showNodeDetails(nodeId);
+        if (nodeId) {
+            showNodeDetails(nodeId);
+        }
     });
 
-    currentNetworkInstance.on("deselectNode", hideNodeDetails);
+    currentNetworkInstance.on("deselectNode", function() {
+        hideNodeDetails();
+    });
 
     currentNetworkInstance.on("stabilizationIterationsDone", function() {
         currentNetworkInstance.setOptions({ physics: { enabled: false } });
@@ -570,7 +619,10 @@ function getVisOptions() {
         nodes: {
             shape: 'dot',
             size: 25,
-            font: { size: 14, face: 'verdana' },
+            font: {
+                size: 14,
+                face: 'verdana'
+            },
             borderWidth: 2,
             chosen: {
                 node: function(values) {
@@ -580,9 +632,19 @@ function getVisOptions() {
         },
         edges: {
             width: 2,
-            font: { size: 12, align: 'middle', color: 'black' },
-            color: { color: 'lightgray', highlight: 'blue', hover: 'blue' },
-            smooth: { type: 'dynamic' },
+            font: {
+                size: 12,
+                align: 'middle',
+                color: 'black'
+            },
+            color: {
+                color: 'lightgray',
+                highlight: 'blue',
+                hover: 'blue'
+            },
+            smooth: {
+                type: 'dynamic'
+            },
             chosen: {
                 edge: function(values) {
                     values.color = 'blue';
@@ -609,14 +671,12 @@ function getVisOptions() {
             }
         },
         interaction: {
-            tooltipDelay: 0,
+            tooltipDelay: 200,
             hideEdgesOnDrag: false,
             selectConnectedEdges: true,
             dragNodes: true,
             dragView: true,
-            zoomView: true,
-            hover: false,                   // ❌ 关闭 hover 检测
-            hoverConnectedEdges: false      // ❌ 不高亮连接边
+            zoomView: true
         },
         layout: {
             improvedLayout: true
@@ -635,19 +695,29 @@ function showPercentage(percent) {
     showLoadingIndicator(true);
 
     try {
-        const numNodesToShow = Math.floor((validPercent / 100) * allNodeIds.length) || 1;
+        const numNodesToShow = Math.max(1, Math.floor((validPercent / 100) * allNodeIds.length));
         const shuffledIds = [...allNodeIds].sort(() => 0.5 - Math.random());
         const selectedNodeIds = new Set(shuffledIds.slice(0, numNodesToShow));
 
         const relevantEdges = originalEdgesArray.filter(edge =>
             selectedNodeIds.has(edge.from) && selectedNodeIds.has(edge.to)
         );
-        const relevantNodes = Array.from(originalNodesMap.values()).filter(n => selectedNodeIds.has(n.id));
+
+        const relevantNodes = Array.from(originalNodesMap.values()).filter(node =>
+            selectedNodeIds.has(node.id)
+        );
+
+        if (relevantNodes.length === 0) {
+            throw new Error('没有找到符合条件的节点');
+        }
 
         currentNodesDataset = new vis.DataSet(relevantNodes);
         currentEdgesDataset = new vis.DataSet(relevantEdges);
 
-        currentNetworkInstance.setData({ nodes: currentNodesDataset, edges: currentEdgesDataset });
+        currentNetworkInstance.setData({
+            nodes: currentNodesDataset,
+            edges: currentEdgesDataset
+        });
 
         setTimeout(() => {
             if (currentNetworkInstance) {
@@ -678,7 +748,7 @@ function showByLabel(displayLabel) {
         const targetType = `类型: ${displayLabel}`;
 
         originalNodesMap.forEach((node, id) => {
-            if (node.title?.includes(targetType)) {
+            if (node.title.includes(targetType)) {
                 selectedNodeIds.add(id);
             }
         });
@@ -687,13 +757,21 @@ function showByLabel(displayLabel) {
             throw new Error(`没有找到类型为 "${displayLabel}" 的节点`);
         }
 
-        const relevantEdges = originalEdgesArray.filter(e => selectedNodeIds.has(e.from) && selectedNodeIds.has(e.to));
-        const relevantNodes = Array.from(originalNodesMap.values()).filter(n => selectedNodeIds.has(n.id));
+        const relevantEdges = originalEdgesArray.filter(edge =>
+            selectedNodeIds.has(edge.from) && selectedNodeIds.has(edge.to)
+        );
+
+        const relevantNodes = Array.from(originalNodesMap.values()).filter(node =>
+            selectedNodeIds.has(node.id)
+        );
 
         currentNodesDataset = new vis.DataSet(relevantNodes);
         currentEdgesDataset = new vis.DataSet(relevantEdges);
 
-        currentNetworkInstance.setData({ nodes: currentNodesDataset, edges: currentEdgesDataset });
+        currentNetworkInstance.setData({
+            nodes: currentNodesDataset,
+            edges: currentEdgesDataset
+        });
 
         setTimeout(() => {
             if (currentNetworkInstance) {
@@ -726,7 +804,7 @@ function toggleControls() {
 }
 
 function createRestoreButton() {
-    removeRestoreButton();
+    removeRestoreButton(); // 确保没有重复
 
     const restoreButton = document.createElement('button');
     restoreButton.id = 'restore-controls-btn';
@@ -743,24 +821,35 @@ function createRestoreButton() {
         border: none;
         border-radius: 4px;
         cursor: pointer;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        transition: background 0.2s;
     `;
-    restoreButton.onmouseover = () => restoreButton.style.background = '#0052a3';
-    restoreButton.onmouseout = () => restoreButton.style.background = '#0066cc';
+    restoreButton.onmouseover = function() {
+        this.style.background = '#0052a3';
+    };
+    restoreButton.onmouseout = function() {
+        this.style.background = '#0066cc';
+    };
     restoreButton.onclick = toggleControls;
 
     document.body.appendChild(restoreButton);
 }
 
 function removeRestoreButton() {
-    const btn = document.getElementById('restore-controls-btn');
-    if (btn) btn.remove();
+    const existingButton = document.getElementById('restore-controls-btn');
+    if (existingButton) {
+        existingButton.remove();
+    }
 }
 
+// --- 工具函数 ---
 function fitToScreen() {
-    currentNetworkInstance?.fit();
+    if (currentNetworkInstance) {
+        currentNetworkInstance.fit();
+    }
 }
 
+// 【优化】添加清理函数，便于内存管理
 function cleanup() {
     if (currentNetworkInstance) {
         currentNetworkInstance.destroy();
@@ -773,4 +862,5 @@ function cleanup() {
     currentEdgesDataset = null;
 }
 
+// 页面卸载时清理资源
 window.addEventListener('beforeunload', cleanup);
