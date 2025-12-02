@@ -394,6 +394,7 @@ function getNodeTypeFromTitle(title) {
     return match ? match[1] : '未知';
 }
 
+// 【修改】更新节点详情显示逻辑，隐藏特定类型节点的类型和ID
 function showNodeDetails(nodeId) {
     const node = originalNodesMap.get(nodeId);
     if (!node) return;
@@ -403,25 +404,35 @@ function showNodeDetails(nodeId) {
     );
 
     const detailsContent = document.getElementById('details-content');
-    // 只展示名称与经过过滤的属性（不显示 id 与 name）
+    
+    // 获取节点类型
+    const nodeType = node.type || getNodeTypeFromTitle(node.title || '');
+    
+    // 定义需要隐藏类型和ID的节点类型
+    const typesToHideTypeAndId = ['姓名', '单位', '地区', '研究领域'];
+    
+    // 开始构建HTML
     let html = `
         <div class="detail-row">
             <div class="detail-label">节点名称</div>
             <div class="detail-value">${escapeHtml(node.label)}</div>
         </div>
-        <div class="detail-row">
-            <div class="detail-label">节点类型</div>
-            <div class="detail-value">${escapeHtml(node.type)}</div>
-        </div>
-        <div class="detail-row">
-            <div class="detail-label">节点ID</div>
-            <div class="detail-value">${escapeHtml(node.id)}</div>
-        </div>
     `;
-
-    // 获取节点类型以决定是否显示属性
-    const nodeType = node.type || getNodeTypeFromTitle(node.title || '');
-
+    
+    // 只有当节点类型不在隐藏列表中时，才显示节点类型和节点ID
+    if (!typesToHideTypeAndId.includes(nodeType)) {
+        html += `
+            <div class="detail-row">
+                <div class="detail-label">节点类型</div>
+                <div class="detail-value">${escapeHtml(node.type || '未知')}</div>
+            </div>
+            <div class="detail-row">
+                <div class="detail-label">节点ID</div>
+                <div class="detail-value">${escapeHtml(node.id)}</div>
+            </div>
+        `;
+    }
+    
     // 定义需要隐藏属性的节点类型
     const typesToHideProps = ['单位', '地区', '研究领域'];
 
