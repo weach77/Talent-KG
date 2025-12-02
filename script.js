@@ -246,8 +246,7 @@ function updateStatisticsPanel() {
 function updateNodeTypeStats() {
     const typeStats = {};
     originalNodesMap.forEach((node) => {
-        const match = node.title.match(/类型: ([^\n]+)/);
-        const type = match ? match[1] : '未知';
+        const type = node.type || '未知';
         typeStats[type] = (typeStats[type] || 0) + 1;
     });
 
@@ -390,13 +389,11 @@ function createNodeDetailsPanel() {
     document.body.appendChild(panel);
 }
 
-// 【优化】提取获取节点类型的辅助方法
 function getNodeTypeFromTitle(title) {
     const match = title.match(/类型: ([^\n]+)/);
     return match ? match[1] : '未知';
 }
 
-// 【修改】更新节点详情显示逻辑，隐藏特定类型节点的属性
 function showNodeDetails(nodeId) {
     const node = originalNodesMap.get(nodeId);
     if (!node) return;
@@ -412,13 +409,21 @@ function showNodeDetails(nodeId) {
             <div class="detail-label">节点名称</div>
             <div class="detail-value">${escapeHtml(node.label)}</div>
         </div>
+        <div class="detail-row">
+            <div class="detail-label">节点类型</div>
+            <div class="detail-value">${escapeHtml(node.type)}</div>
+        </div>
+        <div class="detail-row">
+            <div class="detail-label">节点ID</div>
+            <div class="detail-value">${escapeHtml(node.id)}</div>
+        </div>
     `;
 
     // 获取节点类型以决定是否显示属性
-    const nodeType = getNodeTypeFromTitle(node.title);
+    const nodeType = node.type || getNodeTypeFromTitle(node.title || '');
 
     // 定义需要隐藏属性的节点类型
-    const typesToHideProps = ['单位', '地区', '研究领域']; // 可根据需要添加更多类型
+    const typesToHideProps = ['单位', '地区', '研究领域'];
 
     // 仅当节点类型不在隐藏列表中时，才展示属性
     if (!typesToHideProps.includes(nodeType)) {
@@ -435,7 +440,6 @@ function showNodeDetails(nodeId) {
             `;
         }
     }
-    // 如果节点类型在隐藏列表中，则不添加属性部分
 
     if (relatedEdges.length > 0) {
         html += `
@@ -463,7 +467,6 @@ function showNodeDetails(nodeId) {
     const panel = document.getElementById('node-details-panel');
     panel.classList.add('show');
 }
-
 
 function hideNodeDetails() {
     const panel = document.getElementById('node-details-panel');
@@ -499,7 +502,9 @@ function processNode(nodeData, nodesMap, allIds) {
         id: nodeData.elementId,
         label: nodeLabelValue,
         color: config.color,
-        title: `ID: ${nodeData.elementId}\n类型: ${config.displayLabel}\n值: ${nodeData.properties.value || nodeData.properties.name || 'N/A'}\n属性: ${JSON.stringify(nodeData.properties, null, 2) || 'N/A'}`,
+        type: config.displayLabel, // 存储节点类型
+        // 移除title属性，禁用悬停提示
+        title: '',
         properties: nodeData.properties || {}
     });
     allIds.push(nodeData.elementId);
@@ -537,14 +542,14 @@ window.addEventListener('DOMContentLoaded', function() {
                     processNode(nodeN, originalNodesMap, allNodeIds);
                     processNode(nodeM, originalNodesMap, allNodeIds);
 
-                    // 添加边
+                    // 添加边（移除title属性，禁用悬停提示）
                     const relConfig = relationDefinitions[rel.type] || { displayLabel: rel.type };
                     originalEdgesArray.push({
                         from: nodeN.elementId,
                         to: nodeM.elementId,
                         label: relConfig.displayLabel,
                         arrows: 'to',
-                        title: `关系: ${relConfig.displayLabel}\nID: ${rel.elementId}\n属性: ${JSON.stringify(rel.properties, null, 2) || 'N/A'}`
+                        title: '' // 移除悬停提示
                     });
                 } catch (error) {
                     console.error('处理数据项时出错:', error, item);
@@ -671,7 +676,7 @@ function getVisOptions() {
             }
         },
         interaction: {
-            tooltipDelay: 200,
+            tooltipDelay: 0, // 设置为0禁用悬停提示
             hideEdgesOnDrag: false,
             selectConnectedEdges: true,
             dragNodes: true,
@@ -745,10 +750,9 @@ function showByLabel(displayLabel) {
 
     try {
         const selectedNodeIds = new Set();
-        const targetType = `类型: ${displayLabel}`;
 
         originalNodesMap.forEach((node, id) => {
-            if (node.title.includes(targetType)) {
+            if (node.type === displayLabel) {
                 selectedNodeIds.add(id);
             }
         });
