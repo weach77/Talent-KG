@@ -246,7 +246,7 @@ function updateStatisticsPanel() {
 function updateNodeTypeStats() {
     const typeStats = {};
     originalNodesMap.forEach((node) => {
-        const match = node.title.match(/类型: ([^\n]+)/);
+        const match = node.title ? node.title.match(/类型: ([^\n]+)/) : null;
         const type = match ? match[1] : '未知';
         typeStats[type] = (typeStats[type] || 0) + 1;
     });
@@ -392,7 +392,7 @@ function createNodeDetailsPanel() {
 
 // 【优化】提取获取节点类型的辅助方法
 function getNodeTypeFromTitle(title) {
-    const match = title.match(/类型: ([^\n]+)/);
+    const match = title ? title.match(/类型: ([^\n]+)/) : null;
     return match ? match[1] : '未知';
 }
 
@@ -495,11 +495,11 @@ function processNode(nodeData, nodesMap, allIds) {
     // 优先使用name属性，其次使用value属性
     let nodeLabelValue = nodeData.properties.name || nodeData.properties.value || nodeData.elementId;
 
+    // 移除节点的 title 属性
     nodesMap.set(nodeData.elementId, {
         id: nodeData.elementId,
         label: nodeLabelValue,
         color: config.color,
-        title: `ID: ${nodeData.elementId}\n类型: ${config.displayLabel}\n值: ${nodeData.properties.value || nodeData.properties.name || 'N/A'}\n属性: ${JSON.stringify(nodeData.properties, null, 2) || 'N/A'}`,
         properties: nodeData.properties || {}
     });
     allIds.push(nodeData.elementId);
@@ -539,12 +539,13 @@ window.addEventListener('DOMContentLoaded', function() {
 
                     // 添加边
                     const relConfig = relationDefinitions[rel.type] || { displayLabel: rel.type };
+                    // 移除边的 title 属性
                     originalEdgesArray.push({
                         from: nodeN.elementId,
                         to: nodeM.elementId,
                         label: relConfig.displayLabel,
                         arrows: 'to',
-                        title: `关系: ${relConfig.displayLabel}\nID: ${rel.elementId}\n属性: ${JSON.stringify(rel.properties, null, 2) || 'N/A'}`
+                        properties: rel.properties || {}
                     });
                 } catch (error) {
                     console.error('处理数据项时出错:', error, item);
@@ -748,7 +749,7 @@ function showByLabel(displayLabel) {
         const targetType = `类型: ${displayLabel}`;
 
         originalNodesMap.forEach((node, id) => {
-            if (node.title.includes(targetType)) {
+            if (node.title && node.title.includes(targetType)) {
                 selectedNodeIds.add(id);
             }
         });
