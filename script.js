@@ -435,7 +435,6 @@ function showNodeDetails(nodeId) {
             `;
         }
     }
-    // 如果节点类型在隐藏列表中，则不添加属性部分
 
     if (relatedEdges.length > 0) {
         html += `
@@ -463,7 +462,6 @@ function showNodeDetails(nodeId) {
     const panel = document.getElementById('node-details-panel');
     panel.classList.add('show');
 }
-
 
 function hideNodeDetails() {
     const panel = document.getElementById('node-details-panel');
@@ -537,14 +535,14 @@ window.addEventListener('DOMContentLoaded', function() {
                     processNode(nodeN, originalNodesMap, allNodeIds);
                     processNode(nodeM, originalNodesMap, allNodeIds);
 
-                    // 添加边
+                    // 添加边 —— ⚠️ 关键修改：不再设置 title
                     const relConfig = relationDefinitions[rel.type] || { displayLabel: rel.type };
                     originalEdgesArray.push({
                         from: nodeN.elementId,
                         to: nodeM.elementId,
                         label: relConfig.displayLabel,
-                        arrows: 'to',
-                        title: `关系: ${relConfig.displayLabel}\nID: ${rel.elementId}\n属性: ${JSON.stringify(rel.properties, null, 2) || 'N/A'}`
+                        arrows: 'to'
+                        // 🔴 已移除 title 字段，避免悬停显示
                     });
                 } catch (error) {
                     console.error('处理数据项时出错:', error, item);
@@ -676,7 +674,9 @@ function getVisOptions() {
             selectConnectedEdges: true,
             dragNodes: true,
             dragView: true,
-            zoomView: true
+            zoomView: true,
+            hover: false,                   // 🔴 明确关闭 hover 事件
+            hoverConnectedEdges: false      // 🔴 鼠标悬停时不高亮连接边
         },
         layout: {
             improvedLayout: true
