@@ -396,6 +396,7 @@ function getNodeTypeFromTitle(title) {
     return match ? match[1] : '未知';
 }
 
+// 【修改】更新节点详情显示逻辑，隐藏特定类型节点的属性
 function showNodeDetails(nodeId) {
     const node = originalNodesMap.get(nodeId);
     if (!node) return;
@@ -413,19 +414,28 @@ function showNodeDetails(nodeId) {
         </div>
     `;
 
-    // 展示属性（过滤掉 name 和 id）
-    const props = node.properties || {};
-    const propKeys = Object.keys(props).filter(k => k !== 'name' && k !== 'id');
-    if (propKeys.length > 0) {
-        html += `
-            <div class="detail-row">
-                <div class="detail-label">属性</div>
-                <div class="detail-value">
-                    ${propKeys.map(k => `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(props[k]))}</div>`).join('')}
+    // 获取节点类型以决定是否显示属性
+    const nodeType = getNodeTypeFromTitle(node.title);
+
+    // 定义需要隐藏属性的节点类型
+    const typesToHideProps = ['单位', '地区', '研究领域']; // 可根据需要添加更多类型
+
+    // 仅当节点类型不在隐藏列表中时，才展示属性
+    if (!typesToHideProps.includes(nodeType)) {
+        const props = node.properties || {};
+        const propKeys = Object.keys(props).filter(k => k !== 'name' && k !== 'id');
+        if (propKeys.length > 0) {
+            html += `
+                <div class="detail-row">
+                    <div class="detail-label">属性</div>
+                    <div class="detail-value">
+                        ${propKeys.map(k => `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(props[k]))}</div>`).join('')}
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
+        }
     }
+    // 如果节点类型在隐藏列表中，则不添加属性部分
 
     if (relatedEdges.length > 0) {
         html += `
@@ -453,6 +463,7 @@ function showNodeDetails(nodeId) {
     const panel = document.getElementById('node-details-panel');
     panel.classList.add('show');
 }
+
 
 function hideNodeDetails() {
     const panel = document.getElementById('node-details-panel');
