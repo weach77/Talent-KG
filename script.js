@@ -1,3 +1,4 @@
+
 // --- 配置部分 ---
 const conceptDefinitions = {
     "姓名": { color: "#FF9999", displayLabel: "姓名" },
@@ -405,27 +406,20 @@ function showNodeDetails(nodeId) {
     );
 
     const detailsContent = document.getElementById('details-content');
-    // 只展示名称与经过过滤的属性（不显示 id 与 name）
     let html = `
         <div class="detail-row">
             <div class="detail-label">节点名称</div>
             <div class="detail-value">${escapeHtml(node.label)}</div>
         </div>
+        <div class="detail-row">
+            <div class="detail-label">节点ID</div>
+            <div class="detail-value">${escapeHtml(node.id)}</div>
+        </div>
+        <div class="detail-row">
+            <div class="detail-label">节点类型</div>
+            <div class="detail-value">${getNodeTypeFromTitle(node.title)}</div>
+        </div>
     `;
-
-    // 展示属性（过滤掉 name 和 id）
-    const props = node.properties || {};
-    const propKeys = Object.keys(props).filter(k => k !== 'name' && k !== 'id');
-    if (propKeys.length > 0) {
-        html += `
-            <div class="detail-row">
-                <div class="detail-label">属性</div>
-                <div class="detail-value">
-                    ${propKeys.map(k => `<div><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(props[k]))}</div>`).join('')}
-                </div>
-            </div>
-        `;
-    }
 
     if (relatedEdges.length > 0) {
         html += `
