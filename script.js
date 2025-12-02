@@ -484,11 +484,23 @@ function processNode(nodeData, nodesMap, allIds) {
     // 优先使用name属性，其次使用value属性
     let nodeLabelValue = nodeData.properties.name || nodeData.properties.value || nodeData.elementId;
 
+    // 构建tooltip，过滤掉 id 和 name 属性
+    const filteredProps = {};
+    Object.entries(nodeData.properties || {}).forEach(([key, value]) => {
+        if (key !== 'id' && key !== 'name') {
+            filteredProps[key] = value;
+        }
+    });
+    
+    const propsStr = Object.keys(filteredProps).length > 0 
+        ? JSON.stringify(filteredProps, null, 2) 
+        : 'N/A';
+
     nodesMap.set(nodeData.elementId, {
         id: nodeData.elementId,
         label: nodeLabelValue,
         color: config.color,
-        title: `ID: ${nodeData.elementId}\n类型: ${config.displayLabel}\n值: ${nodeData.properties.value || nodeData.properties.name || 'N/A'}\n属性: ${JSON.stringify(nodeData.properties, null, 2) || 'N/A'}`,
+        title: `值: ${nodeData.properties.value || nodeData.properties.name || 'N/A'}\n属性: ${propsStr}`,
         properties: nodeData.properties || {}
     });
     allIds.push(nodeData.elementId);
